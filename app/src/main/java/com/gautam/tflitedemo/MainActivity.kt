@@ -183,11 +183,13 @@ class MainActivity : AppCompatActivity() {
 
                         tfInputBuffer = preProcessImage(bitmapBuffer, imageRotationDegrees)
 
+                        val startTime = System.currentTimeMillis()
                         // Runs the inference call
                         interpreter.run(
                             tfInputBuffer.buffer,
                             outputProbabilityBuffer.buffer.rewind()
                         ) // rewind sets position back to 0 for reuse
+                        val inferenceTime = System.currentTimeMillis() - startTime
 
                         // Gets the map of label and probability
                         val labeledProbability =
@@ -204,6 +206,7 @@ class MainActivity : AppCompatActivity() {
                                 outputList.subList(0, 3).joinToString(separator = "\n") {
                                     "${"%.2f".format(it.confidence)} ${it.title}"
                                 }
+                            activityMainBinding.textInference.text = getString(R.string.inference_time, inferenceTime.toString())
                         }
                     }
 

@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">TFLiteDemo</string>
     <string name="permission_camera_message">Camera permission is required for the functionality of the app.</string>
+    <string name="inference_time">Inference time : %sms</string>
 </resources>
