@@ -19,14 +19,19 @@ import com.vmadalin.easypermissions.annotations.AfterPermissionGranted
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
+import org.tensorflow.lite.support.common.TensorProcessor
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 import org.tensorflow.lite.support.image.ops.ResizeWithCropOrPadOp
 import org.tensorflow.lite.support.image.ops.Rot90Op
+import org.tensorflow.lite.support.label.TensorLabel
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.min
 
 private const val TAG = "MainActivity" // shortcut logt
 private const val REQUEST_CODE_CAMERA_PERMISSION = 123
@@ -36,6 +41,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bitmapBuffer: Bitmap
     private val executor = Executors.newSingleThreadExecutor()
     private var imageRotationDegrees: Int = 0
+
+    data class Recognition(val id: String, val title: String, val confidence: Float)
 
     // Initialize TFLite using play services Task
     private val initializeTask: Task<Void> by lazy {
@@ -66,6 +73,23 @@ class MainActivity : AppCompatActivity() {
     private var tfInputBuffer = TensorImage(DataType.UINT8)
     private lateinit var tfImageProcessor: ImageProcessor
     private val preprocessNormalizeOp = NormalizeOp(127.0f, 128.0f)
+    private val postprocessNormalizeOp = NormalizeOp(0.0f, 1.0f)
+
+    //Load labels from txt file
+    private val labels by lazy { FileUtil.loadLabels(applicationContext, LABELS_PATH) }
+
+    // Processor to apply post processing of the output probability
+    private val probabilityProcessor = TensorProcessor.Builder().add(postprocessNormalizeOp).build()
+
+    // Output probability TensorBuffer
+    private val outputProbabilityBuffer: TensorBuffer by lazy {
+        val probabilityTensorIndex = 0
+        val probabilityShape =
+            interpreter.getOutputTensor(probabilityTensorIndex).shape() // {1, NUM_CLASSES}
+        val probabilityDataType = interpreter.getOutputTensor(probabilityTensorIndex).dataType()
+        TensorBuffer.createFixedSize(probabilityShape, probabilityDataType)
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -139,6 +163,28 @@ class MainActivity : AppCompatActivity() {
 
                         tfInputBuffer = preProcessImage(bitmapBuffer, imageRotationDegrees)
 
+                        // Runs the inference call
+                        interpreter.run(
+                            tfInputBuffer.buffer,
+                            outputProbabilityBuffer.buffer.rewind()
+                        ) // rewind sets position back to 0 for reuse
+
+                        // Gets the map of label and probability
+                        val labeledProbability =
+                            TensorLabel(
+                                labels,
+                                probabilityProcessor.process(outputProbabilityBuffer)
+                            ).mapWithFloatValue
+
+                        val outputList = getTopKProbability(labeledProbability, 3)
+
+                        // Update the text and UI
+                        activityMainBinding.cameraPreview.post {
+                            activityMainBinding.textPrediction.text =
+                                outputList.subList(0, 3).joinToString(separator = "\n") {
+                                    "${"%.2f".format(it.confidence)} ${it.title}"
+                                }
+                        }
                     }
 
                     // Apply declared configs to CameraX using the same lifecycle owner
@@ -156,6 +202,18 @@ class MainActivity : AppCompatActivity() {
                 ContextCompat.getMainExecutor(this)
             )
         }
+
+    /** Gets the top-k results. */
+    private fun getTopKProbability(
+        labelProb: Map<String, Float>,
+        resultCount: Int
+    ): List<Recognition> {
+        // Sort the recognition by confidence from high to low.
+        val pq: PriorityQueue<Recognition> =
+            PriorityQueue(resultCount, compareByDescending<Recognition> { it.confidence })
+        pq += labelProb.map { (label, prob) -> Recognition(label, label, prob) }
+        return List(min(resultCount, pq.size)) { pq.poll()!! }
+    }
 
     private fun preProcessImage(bitmapBuffer: Bitmap, imageRotationDegrees: Int): TensorImage {
         // Initializes preprocessor

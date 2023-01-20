@@ -12,4 +12,16 @@
         android:layout_height="match_parent"
         app:scaleType="fitCenter"/>
 
+    <TextView
+        android:id="@+id/text_prediction"
+        android:layout_width="match_parent"
+        android:padding="16dp"
+        android:layout_height="wrap_content"
+        android:textAllCaps="true"
+        android:gravity="start"
+        android:textAppearance="@style/TextAppearance.AppCompat.Large"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
