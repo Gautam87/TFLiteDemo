@@ -13,11 +13,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.gautam.tflitedemo.databinding.ActivityMainBinding
 import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.tflite.client.TfLiteInitializationOptions
 import com.google.android.gms.tflite.java.TfLite
 import com.vmadalin.easypermissions.EasyPermissions
 import com.vmadalin.easypermissions.annotations.AfterPermissionGranted
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.InterpreterApi
+import org.tensorflow.lite.gpu.GpuDelegateFactory
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.TensorProcessor
 import org.tensorflow.lite.support.common.ops.NormalizeOp
@@ -37,6 +40,7 @@ private const val TAG = "MainActivity" // shortcut logt
 private const val REQUEST_CODE_CAMERA_PERMISSION = 123
 
 class MainActivity : AppCompatActivity() {
+    private var useGpu = false
     private lateinit var activityMainBinding: ActivityMainBinding
     private lateinit var bitmapBuffer: Bitmap
     private val executor = Executors.newSingleThreadExecutor()
@@ -46,7 +50,21 @@ class MainActivity : AppCompatActivity() {
 
     // Initialize TFLite using play services Task
     private val initializeTask: Task<Void> by lazy {
-        TfLite.initialize(this).addOnFailureListener {
+        TfLite.initialize(
+            this,
+            TfLiteInitializationOptions.builder()
+                .setEnableGpuDelegateSupport(true)
+                .build()
+        ).continueWithTask { task ->
+            if (task.isSuccessful) {
+                useGpu = true
+                return@continueWithTask Tasks.forResult(null)
+            } else {
+                // Fallback to initialize interpreter without GPU
+                Toast.makeText(this, "GPU not supported", Toast.LENGTH_SHORT).show()
+                return@continueWithTask TfLite.initialize(this)
+            }
+        }.addOnFailureListener {
             Log.e(TAG, "TFLite in Play Services failed to initialize.", it)
         }
     }
@@ -55,6 +73,9 @@ class MainActivity : AppCompatActivity() {
     private val interpreterInitializer = lazy {
         val interpreterOption = InterpreterApi.Options()
             .setRuntime(InterpreterApi.Options.TfLiteRuntime.FROM_SYSTEM_ONLY)
+        if (useGpu) {
+            interpreterOption.addDelegateFactory(GpuDelegateFactory())
+        }
         InterpreterApi.create(
             FileUtil.loadMappedFile(applicationContext, MODEL_PATH),
             interpreterOption
@@ -99,7 +120,6 @@ class MainActivity : AppCompatActivity() {
         // Initialize TFLite asynchronously
         initializeTask.addOnSuccessListener {
             Log.d(TAG, "TFLite in Play Services initialized successfully.")
-            Toast.makeText(this, "TFLite successfully initialized", Toast.LENGTH_SHORT).show()
         }
     }
 
