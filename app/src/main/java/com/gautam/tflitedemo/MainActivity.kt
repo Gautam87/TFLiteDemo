@@ -3,17 +3,22 @@ package com.gautam.tflitedemo
 import android.Manifest.permission.CAMERA
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.gautam.tflitedemo.databinding.ActivityMainBinding
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tflite.java.TfLite
 import com.vmadalin.easypermissions.EasyPermissions
 import com.vmadalin.easypermissions.annotations.AfterPermissionGranted
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+private const val TAG = "MainActivity" // shortcut logt
 private const val REQUEST_CODE_CAMERA_PERMISSION = 123
 
 class MainActivity : AppCompatActivity() {
@@ -22,12 +27,23 @@ class MainActivity : AppCompatActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var imageRotationDegrees: Int = 0
 
+    // Initialize TFLite using play services Task
+    private val initializeTask: Task<Void> by lazy {
+        TfLite.initialize(this).addOnFailureListener {
+            Log.e(TAG, "TFLite in Play Services failed to initialize.", it)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activityMainBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(activityMainBinding.root)
         checkCameraPermission()
-
+        // Initialize TFLite asynchronously
+        initializeTask.addOnSuccessListener {
+            Log.d(TAG, "TFLite in Play Services initialized successfully.")
+            Toast.makeText(this, "TFLite successfully initialized", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onDestroy() {
